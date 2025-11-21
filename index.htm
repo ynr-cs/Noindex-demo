@@ -3,55 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ODPT ID抽出ツール（開発者用）</title>
+    <title>ODPT ID Hunter for BusNavi</title>
     <style>
-        body { font-family: 'Consolas', 'Monaco', sans-serif; padding: 20px; background-color: #1e1e1e; color: #d4d4d4; }
-        h1 { border-bottom: 1px solid #444; padding-bottom: 10px; color: #569cd6; }
-        h2 { font-size: 1.1em; margin-top: 20px; color: #4ec9b0; }
+        body { font-family: "Consolas", "Monaco", sans-serif; padding: 20px; background-color: #1e1e1e; color: #d4d4d4; }
+        h1 { color: #4ec9b0; font-size: 1.2rem; border-bottom: 1px solid #333; padding-bottom: 10px; }
         
         /* 入力エリア */
-        .input-area { background: #252526; padding: 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #3e3e42; }
-        input { background: #3c3c3c; border: 1px solid #555; color: white; padding: 8px; width: 300px; font-family: inherit; }
-        button { background: #0e639c; color: white; border: none; padding: 8px 16px; cursor: pointer; font-family: inherit; }
+        .search-area { margin-bottom: 20px; }
+        input { background: #252526; border: 1px solid #3e3e42; color: white; padding: 10px; width: 300px; }
+        button { background: #0e639c; color: white; border: none; padding: 10px 20px; cursor: pointer; }
         button:hover { background: #1177bb; }
 
-        /* 結果リスト */
-        .item-box { background: #2d2d2d; border: 1px solid #444; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
-        .item-box:hover { border-color: #569cd6; }
-        
-        .label { color: #9cdcfe; font-size: 0.9em; display: inline-block; width: 80px; }
-        .value { color: #ce9178; font-weight: bold; cursor: pointer; user-select: all; }
-        .desc { color: #6a9955; font-size: 0.9em; margin-left: 10px; }
-        
-        .copy-btn { background: #333; font-size: 0.8em; padding: 2px 8px; margin-left: 10px; border: 1px solid #555; }
+        /* 2カラムレイアウト */
+        .container { display: flex; gap: 20px; }
+        .list-pane { flex: 1; border: 1px solid #333; padding: 10px; height: 80vh; overflow-y: auto; background: #252526; }
+        .detail-pane { flex: 2; border: 1px solid #333; padding: 10px; height: 80vh; overflow-y: auto; background: #1e1e1e; }
 
-        /* 詳細エリア */
-        #detailArea { margin-top: 20px; border-top: 1px solid #444; padding-top: 20px; }
-        .route-row { border-bottom: 1px solid #333; padding: 8px 0; display: flex; justify-content: space-between; align-items: center; }
-        .route-name { font-weight: bold; color: #dcdcaa; width: 100px; }
-        .route-dir { color: #9cdcfe; flex: 1; }
+        /* アイテム表示 */
+        .stop-item { padding: 10px; border-bottom: 1px solid #333; cursor: pointer; }
+        .stop-item:hover { background: #2a2d2e; }
+        .stop-item.active { background: #094771; }
         
-        .loading { color: #d7ba7d; font-style: italic; }
+        .section-title { color: #ce9178; margin-top: 20px; font-weight: bold; font-size: 1.1em; }
+        .id-box { background: #000; padding: 10px; margin: 5px 0; border: 1px solid #333; font-size: 0.85em; word-break: break-all; display: flex; justify-content: space-between; align-items: center; }
+        
+        .copy-btn { background: #333; color: #fff; border: 1px solid #555; padding: 2px 8px; font-size: 0.8em; cursor: pointer; margin-left: 10px; }
+        .copy-btn:active { background: #4ec9b0; color: #000; }
+
+        .route-card { border: 1px solid #444; padding: 10px; margin-bottom: 10px; background: #2d2d2d; }
+        .route-title { font-size: 1.1em; color: #9cdcfe; font-weight: bold; }
+        .route-dest { color: #dcdcaa; font-size: 0.9em; }
+        .loading { color: #569cd6; }
     </style>
 </head>
 <body>
 
-    <h1>公共交通DB ID抽出ツール</h1>
-    <p style="font-size:0.9em; color:#888;">「バスナビ」の設定ファイル(CONFIG)を作るためのツールです。</p>
-
-    <div class="input-area">
-        <input type="text" id="stopInput" value="上大岡駅" placeholder="バス停名（例：洋光台駅前）">
-        <button onclick="searchStop()">バス停を検索</button>
+    <h1>ODPT ID 採掘ツール (BusNavi開発用)</h1>
+    <div class="search-area">
+        <input type="text" id="searchInput" value="洋光台駅" placeholder="バス停名 (例: 洋光台, 上大岡)">
+        <button onclick="searchStops()">検索</button>
     </div>
 
-    <div id="stopList"></div>
-    <div id="detailArea" style="display:none;">
-        <h2 id="detailTitle">系統ID一覧</h2>
-        <div style="font-size:0.9em; color:#888; margin-bottom:10px;">
-            ※選択したバス停を通る全系統のIDと行き先を表示します。<br>
-            逆方向のIDを間違えて登録しないよう注意してください。
+    <div class="container">
+        <!-- 左側：バス停リスト -->
+        <div class="list-pane" id="stopList">
+            <div style="padding:10px; color:#666;">ここに検索結果が出ます</div>
         </div>
-        <div id="routeList"></div>
+
+        <!-- 右側：詳細（ID一覧） -->
+        <div class="detail-pane" id="detailArea">
+            <div style="padding:10px; color:#666;">左のリストからバス停を選んでください</div>
+        </div>
     </div>
 
     <script>
@@ -59,133 +61,115 @@
         const API_BASE = "https://api.odpt.org/api/v4";
         const OPERATOR = "odpt.Operator:YokohamaMunicipal";
 
-        // クリップボードコピー
-        function copyText(text) {
+        // コピー機能
+        function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => {
-                alert('IDをコピーしました:\n' + text);
+                alert("コピーしました:\n" + text);
             });
         }
 
         // 1. バス停検索
-        async function searchStop() {
-            const name = document.getElementById('stopInput').value;
-            const list = document.getElementById('stopList');
-            const detail = document.getElementById('detailArea');
-            
-            list.innerHTML = '<div class="loading">検索中...</div>';
-            detail.style.display = 'none';
+        async function searchStops() {
+            const input = document.getElementById('searchInput').value;
+            const listArea = document.getElementById('stopList');
+            listArea.innerHTML = '<div class="loading">検索中...</div>';
 
             try {
-                const url = `${API_BASE}/odpt:BusstopPole?odpt:operator=${OPERATOR}&dc:title=${encodeURIComponent(name)}&acl:consumerKey=${API_KEY}`;
+                const url = `${API_BASE}/odpt:BusstopPole?odpt:operator=${OPERATOR}&dc:title=${encodeURIComponent(input)}&acl:consumerKey=${API_KEY}`;
                 const res = await fetch(url);
                 const data = await res.json();
 
-                list.innerHTML = `<h2>検索結果: ${data.length}件</h2>`;
-
+                listArea.innerHTML = "";
                 if (data.length === 0) {
-                    list.innerHTML += '<p>見つかりませんでした。</p>';
+                    listArea.innerHTML = "見つかりませんでした";
                     return;
                 }
 
                 data.forEach(stop => {
-                    // IDを表示用に短縮せず、フルで表示
-                    const id = stop['owl:sameAs'];
-                    const routeCount = (stop['odpt:busroutePattern'] || []).length;
-                    
                     const div = document.createElement('div');
-                    div.className = 'item-box';
+                    div.className = 'stop-item';
                     div.innerHTML = `
-                        <div><span class="label">バス停名:</span> <strong>${stop['dc:title']}</strong> <span class="desc">(ポール番号: ${stop['odpt:busstopPoleNumber'] || '-'})</span></div>
-                        <div style="margin-top:5px;">
-                            <span class="label">ID:</span>
-                            <span class="value" onclick="copyText('${id}')">${id}</span>
-                            <button class="copy-btn" onclick="copyText('${id}')">COPY</button>
-                        </div>
-                        <div style="margin-top:5px; font-size:0.9em; color:#888;">
-                            通過系統数: ${routeCount} 
-                            <button onclick="analyzeRoutes('${id}', '${stop['dc:title']}', '${(stop['odpt:busroutePattern'] || []).join(',')}')" style="margin-left:10px; font-size:0.9em;">このバス停の系統を解析</button>
-                        </div>
+                        <strong>${stop['dc:title']}</strong><br>
+                        <small>ID末尾: ...${stop['owl:sameAs'].split('.').pop()}</small>
                     `;
-                    list.appendChild(div);
+                    div.onclick = () => {
+                        // 選択状態のスタイル
+                        document.querySelectorAll('.stop-item').forEach(el => el.classList.remove('active'));
+                        div.classList.add('active');
+                        showDetails(stop);
+                    };
+                    listArea.appendChild(div);
                 });
 
             } catch (e) {
-                list.innerHTML = `<p style="color:red">エラー: ${e.message}</p>`;
+                listArea.innerHTML = "エラー: " + e.message;
             }
         }
 
-        // 2. 系統IDの解析（行き先を表示）
-        async function analyzeRoutes(stopId, stopName, routeIdsStr) {
-            const routeList = document.getElementById('routeList');
+        // 2. 詳細表示 & 系統ID解析
+        async function showDetails(stop) {
             const detailArea = document.getElementById('detailArea');
-            const title = document.getElementById('detailTitle');
-            
-            if(!routeIdsStr) {
-                alert("系統情報がありません");
-                return;
+            const stopId = stop['owl:sameAs'];
+            const routeIds = stop['odpt:busroutePattern'] || [];
+
+            detailArea.innerHTML = `
+                <h2 style="margin-top:0;">${stop['dc:title']}</h2>
+                
+                <div class="section-title">■ このバス停のID (stopId)</div>
+                <div style="font-size:0.8em; color:#888; margin-bottom:5px;">設定ファイルの stopId に使います</div>
+                <div class="id-box">
+                    <span style="color:#ce9178;">"${stopId}"</span>
+                    <button class="copy-btn" onclick="copyToClipboard('${stopId}')">COPY</button>
+                </div>
+
+                <div class="section-title">■ 通過する系統のID (routeIds)</div>
+                <div style="font-size:0.8em; color:#888; margin-bottom:5px;">設定ファイルの routeIds 配列に使います。必要な行き先のものをコピーしてください。</div>
+                <div id="routeContainer"><div class="loading">系統情報を解析中... (${routeIds.length}件)</div></div>
+            `;
+
+            // 系統情報を個別に取得して、中身（行き先・系統名）を表示する
+            const routeContainer = document.getElementById('routeContainer');
+            let routeHtml = "";
+
+            // API負荷軽減のため5件ずつ処理
+            // ※本番アプリではないので、ここでは単純に逐次取得します
+            for (const rid of routeIds) {
+                try {
+                    // BusroutePattern APIを叩いて、名前と方向を確認
+                    const url = `${API_BASE}/odpt:BusroutePattern?owl:sameAs=${encodeURIComponent(rid)}&acl:consumerKey=${API_KEY}`;
+                    const res = await fetch(url);
+                    const rData = await res.json();
+
+                    if (rData.length > 0) {
+                        const route = rData[0];
+                        const title = route['dc:title'] || "不明な系統"; // 例: 111系統
+                        const direction = route['odpt:direction'] || "方向不明"; // 例: 上大岡駅前行
+                        // directionがコード値の場合があるので、noteやdestinationSignも確認したいが、
+                        // BusroutePatternにはdestinationSignがないことが多い。
+                        // 傾向として、IDの中にヒントがある場合も。
+                        
+                        routeHtml += `
+                            <div class="route-card">
+                                <div class="route-title">${title}</div>
+                                <div class="route-dest">方向データ: ${direction}</div>
+                                <div class="id-box">
+                                    <span style="color:#9cdcfe;">"${rid}"</span>
+                                    <button class="copy-btn" onclick="copyToClipboard('${rid}')">COPY</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
             }
 
-            const routeIds = routeIdsStr.split(',');
-            
-            detailArea.style.display = 'block';
-            title.innerText = `「${stopName}」を通る系統のID一覧 (${routeIds.length}件)`;
-            routeList.innerHTML = '<div class="loading">系統の詳細情報を取得中... (時間がかかります)</div>';
-            
-            // 画面位置までスクロール
-            detailArea.scrollIntoView({behavior: "smooth"});
-
-            let html = "";
-
-            // 並列処理で一気に取得
-            const promises = routeIds.map(async (rid) => {
-                try {
-                    const url = `${API_BASE}/odpt:BusroutePattern?acl:consumerKey=${API_KEY}&@id=${rid}`;
-                    const res = await fetch(url);
-                    const data = await res.json();
-                    return data[0];
-                } catch(e) {
-                    return null;
-                }
-            });
-
-            const results = await Promise.all(promises);
-
-            results.forEach(route => {
-                if(!route) return;
-                
-                const id = route['owl:sameAs'];
-                const name = route['dc:title']; // 例: 111
-                const direction = route['odpt:direction'] || "方向不明"; 
-                // 注: 横浜市営は direction が数字の場合が多いので、行き先を探す必要がある
-                
-                // 行き先判定ロジック（終点バス停名を取得）
-                const poles = route['odpt:busstopPoleOrder'];
-                const lastPole = poles[poles.length - 1];
-                // 本当はLastPoleのIDから名前引く必要があるが、API節約のため簡易表示
-                // (多くの場合はIDの中に名前が含まれている or directionを見る)
-
-                html += `
-                    <div class="item-box">
-                        <div class="route-row" style="border:none;">
-                            <span class="route-name">${name}系統</span>
-                            <span class="route-dir">ID末尾: ...${id.split('.').pop()}</span>
-                        </div>
-                        <div style="margin-bottom:5px; font-size:0.8em; color:#aaa;">
-                            ID: <span class="value" onclick="copyText('${id}')">${id}</span>
-                        </div>
-                        <button class="copy-btn" onclick="copyText('${id}')" style="margin:0; width:100%;">この系統IDをコピー</button>
-                    </div>
-                `;
-            });
-
-            routeList.innerHTML = html;
-            
-            // 補足：正確な「〜行き」を知るには、もう一度BusTimetableを叩くのが確実だが、
-            // 開発用としては一旦IDリストが出て、そこから「上り/下り」を推測して試すのが一般的です。
-            // ヒント：IDの数字が「...111.42801.1」と「...111.42801.2」のように末尾が違う場合、それが逆方向です。
-            routeList.innerHTML += `<p style="color:#d7ba7d; font-size:0.8em;">※ヒント：同じ系統番号でもID末尾の数字（.1 / .2など）が違うものが「逆方向（上り・下り）」です。</p>`;
+            if (routeHtml === "") {
+                routeContainer.innerHTML = "系統情報が取得できませんでした。";
+            } else {
+                routeContainer.innerHTML = routeHtml;
+            }
         }
-
     </script>
 </body>
 </html>
