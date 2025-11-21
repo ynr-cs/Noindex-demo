@@ -1,11 +1,124 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>Noindex Test</title>
-  <meta name="robots" content="noindex, nofollow">
+    <meta charset="UTF-8">
+    <title>横浜市営バス 時刻表検索</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .bus-stop { margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; cursor: pointer; }
+        .bus-stop:hover { background-color: #f0f0f0; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
 </head>
 <body>
-  <h1>これは noindex テストページです</h1>
+    <h1>横浜市営バス 時刻表ビューア</h1>
+    
+    <div>
+        <p>1. バス停名を入力してください（例：横浜駅前）</p>
+        <input type="text" id="stopNameInput" value="横浜駅前">
+        <button id="searchBtn">バス停を検索</button>
+    </div>
+
+    <div id="stopList"></div>
+    <div id="timetableArea"></div>
+
+    <script>
+        // アクセストークン（取り扱いに注意！）
+        const API_KEY = "ey01nwehtybra9q2yzsjvskb5scs53wzne32hhgm1g7reh76oj1nudg8rpavr7ui";
+        const OPERATOR_ID = "odpt.Operator:YokohamaMunicipal";
+        const API_BASE = "https://api.odpt.org/api/v4";
+
+        // 1. バス停を検索する関数 (ドキュメント 4.2.5 odpt:BusstopPole を使用)
+        async function searchBusStop() {
+            const stopName = document.getElementById('stopNameInput').value;
+            const resultArea = document.getElementById('stopList');
+            resultArea.innerHTML = "検索中...";
+            document.getElementById('timetableArea').innerHTML = ""; // 時刻表クリア
+
+            // バス停名(dc:title)で検索
+            const url = `${API_BASE}/odpt:BusstopPole?odpt:operator=${OPERATOR_ID}&dc:title=${stopName}&acl:consumerKey=${API_KEY}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                resultArea.innerHTML = `<h3>「${stopName}」の検索結果: ${data.length}件</h3>`;
+                
+                if (data.length === 0) {
+                    resultArea.innerHTML += "<p>見つかりませんでした。正確な名前を入力してください。</p>";
+                    return;
+                }
+
+                // 検索結果のバス停をリスト表示
+                data.forEach(stop => {
+                    const div = document.createElement('div');
+                    div.className = 'bus-stop';
+                    // stop['owl:sameAs'] がバス停の固有IDです
+                    div.innerHTML = `<strong>${stop['dc:title']}</strong> (ID: ${stop['odpt:busstopPoleNumber'] || 'N/A'})<br><small>クリックして時刻表を表示</small>`;
+                    
+                    // クリックしたら時刻表を取得するイベントを設定
+                    div.onclick = () => getTimetable(stop['owl:sameAs'], stop['dc:title']);
+                    resultArea.appendChild(div);
+                });
+
+            } catch (error) {
+                console.error(error);
+                resultArea.innerHTML = "エラーが発生しました。";
+            }
+        }
+
+        // 2. 特定のバス停の時刻表を取得する関数 (ドキュメント 4.2.6 odpt:BusstopPoleTimetable を使用)
+        async function getTimetable(poleId, stopName) {
+            const area = document.getElementById('timetableArea');
+            area.innerHTML = `<h3>${stopName} の時刻表を読み込み中...</h3>`;
+
+            // バス停ID (odpt:busstopPole) を指定して時刻表を取得
+            const url = `${API_BASE}/odpt:BusstopPoleTimetable?odpt:operator=${OPERATOR_ID}&odpt:busstopPole=${poleId}&acl:consumerKey=${API_KEY}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.length === 0) {
+                    area.innerHTML = "<p>時刻表データが見つかりませんでした。</p>";
+                    return;
+                }
+
+                // 系統や行き先ごとに時刻表データが分かれているので、まとめて表示
+                let html = `<h2>${stopName} の時刻表</h2>`;
+
+                data.forEach(table => {
+                    // ドキュメント 4.3.6 を参照してデータを取得
+                    const title = table['dc:title'] || "系統不明";
+                    const calendar = table['odpt:calendar'].replace("odpt.Calendar:", ""); // 平日/休日など
+                    
+                    html += `<h3>${title} (${calendar})</h3>`;
+                    html += `<table><tr><th>時間</th><th>行き先</th></tr>`;
+
+                    // 時刻データの配列 (odpt:busstopPoleTimetableObject)
+                    const times = table['odpt:busstopPoleTimetableObject'];
+                    
+                    // 時間順に並んでいるはずだが、念のため
+                    times.forEach(t => {
+                        const timeStr = t['odpt:departureTime']; // 出発時刻
+                        const dest = t['odpt:destinationSign'] || ""; // 行き先
+                        html += `<tr><td>${timeStr}</td><td>${dest}</td></tr>`;
+                    });
+                    html += `</table>`;
+                });
+
+                area.innerHTML = html;
+
+            } catch (error) {
+                console.error(error);
+                area.innerHTML = "時刻表の取得に失敗しました。";
+            }
+        }
+
+        // ボタンにイベントをセット
+        document.getElementById('searchBtn').addEventListener('click', searchBusStop);
+    </script>
 </body>
 </html>
