@@ -2,159 +2,208 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- スマホ対応 -->
-    <title>横浜市営バス 時刻表検索（修正版）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>横浜市営バス時刻表（診断モード）</title>
     <style>
-        body { font-family: sans-serif; padding: 15px; line-height: 1.6; }
-        h1 { font-size: 1.2em; color: #003366; }
-        input, button { padding: 10px; font-size: 16px; margin-bottom: 10px; width: 100%; box-sizing: border-box; }
+        body { font-family: sans-serif; padding: 15px; line-height: 1.5; color: #333; }
+        h1 { font-size: 1.2em; color: #003366; margin-bottom: 10px; }
+        input, button { padding: 12px; font-size: 16px; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
         button { background-color: #0055aa; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .bus-stop { margin-bottom: 8px; padding: 10px; border: 1px solid #ddd; background: #fff; cursor: pointer; border-radius: 4px; }
-        .bus-stop:hover { background-color: #eef; border-color: #0055aa; }
-        .time-row { border-bottom: 1px solid #eee; padding: 5px 0; display: flex; justify-content: space-between; }
-        .loading { color: #666; font-style: italic; }
-        .error { color: red; background: #ffeeee; padding: 10px; }
+        button:active { background-color: #004499; }
+        
+        /* バス停リストのスタイル */
+        .stop-item { padding: 10px; border: 1px solid #ddd; margin-bottom: 8px; border-radius: 4px; cursor: pointer; background: #fff; }
+        .stop-item:hover { background: #f0f8ff; border-color: #0055aa; }
+        
+        /* 時刻表のスタイル */
+        .timetable-box { margin-top: 20px; border-top: 2px solid #0055aa; padding-top: 10px; }
+        .time-row { border-bottom: 1px solid #eee; padding: 8px 0; display: flex; justify-content: space-between; }
+        .time-val { font-size: 1.3em; font-weight: bold; color: #333; }
+        .dest-val { color: #666; }
+
+        /* ログ表示エリア（エラー確認用） */
+        #debugLog {
+            background: #333; color: #0f0; font-family: monospace; 
+            padding: 10px; margin-top: 20px; font-size: 12px; 
+            height: 150px; overflow-y: scroll; border-radius: 4px;
+        }
     </style>
 </head>
 <body>
-    <h1>横浜市営バス 時刻表（抽出モード）</h1>
-    
-    <input type="text" id="stopNameInput" value="横浜駅前" placeholder="バス停名を入力">
-    <button id="searchBtn">バス停を検索</button>
 
-    <div id="resultArea"></div>
+    <h1>横浜市営バス 時刻表検索</h1>
+    
+    <input type="text" id="stopName" value="横浜駅前" placeholder="バス停名を入力">
+    <button id="searchBtn">検索実行</button>
+
+    <div id="resultArea">ここに検索結果が表示されます</div>
+    
+    <!-- デバッグログ表示エリア -->
+    <h3>処理ログ（エラー時はここを確認）</h3>
+    <div id="debugLog">待機中...</div>
 
     <script>
         const API_KEY = "ey01nwehtybra9q2yzsjvskb5scs53wzne32hhgm1g7reh76oj1nudg8rpavr7ui";
         const API_BASE = "https://api.odpt.org/api/v4";
-        const OPERATOR_ID = "odpt.Operator:YokohamaMunicipal";
+        const OPERATOR = "odpt.Operator:YokohamaMunicipal";
 
-        const resultArea = document.getElementById('resultArea');
+        // 画面にログを出す関数
+        function log(msg) {
+            const logDiv = document.getElementById('debugLog');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML = `[${time}] ${msg}<br>` + logDiv.innerHTML;
+            console.log(msg);
+        }
 
-        // 1. バス停検索
+        // 1. バス停を検索
         async function searchBusStop() {
-            const stopName = document.getElementById('stopNameInput').value;
-            resultArea.innerHTML = '<div class="loading">バス停を検索中...</div>';
+            const name = document.getElementById('stopName').value;
+            const resultDiv = document.getElementById('resultArea');
+            
+            resultDiv.innerHTML = "検索中...";
+            log(`バス停「${name}」を検索開始...`);
 
             try {
-                const url = `${API_BASE}/odpt:BusstopPole?odpt:operator=${OPERATOR_ID}&dc:title=${stopName}&acl:consumerKey=${API_KEY}`;
-                const response = await fetch(url);
-                const data = await response.json();
+                // URLエンコード（重要）
+                const url = `${API_BASE}/odpt:BusstopPole?odpt:operator=${OPERATOR}&dc:title=${encodeURIComponent(name)}&acl:consumerKey=${API_KEY}`;
+                
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`APIエラー: ${res.status}`);
+                
+                const data = await res.json();
+                log(`検索ヒット数: ${data.length}件`);
 
                 if (data.length === 0) {
-                    resultArea.innerHTML = '<div class="error">バス停が見つかりませんでした。<br>例：「横浜駅前」「本牧」など正確に入力してください。</div>';
+                    resultDiv.innerHTML = "<p>見つかりませんでした。</p>";
                     return;
                 }
 
-                // 検索結果表示
-                let html = `<h3>「${stopName}」の検索結果 (${data.length}件)</h3>`;
-                html += `<p style="font-size:0.9em; color:#666;">※見たい乗り場を選んでください</p>`;
-                
-                data.forEach(stop => {
-                    // 系統情報の配列を取得（なければ空配列）
-                    const routeIds = stop['odpt:busroutePattern'] || [];
-                    
-                    // HTML生成
-                    html += `<div class="bus-stop" onclick="loadTimetable('${stop['owl:sameAs']}', '${stop['dc:title']}', '${routeIds.join(',')}')">
-                        <strong>${stop['dc:title']}</strong> 
-                        <span style="font-size:0.8em; color:#555;">(ID: ${stop['odpt:busstopPoleNumber'] || '-'})</span>
-                        <br>
-                        <small>乗り入れ系統数: ${routeIds.length}</small>
-                    </div>`;
-                });
-                
-                resultArea.innerHTML = html;
+                resultDiv.innerHTML = ""; // クリア
 
-            } catch (error) {
-                console.error(error);
-                resultArea.innerHTML = `<div class="error">エラーが発生しました: ${error.message}</div>`;
+                // バス停リストを作成
+                data.forEach(stop => {
+                    const div = document.createElement('div');
+                    div.className = 'stop-item';
+                    
+                    const routeIds = stop['odpt:busroutePattern'] || [];
+                    const stopId = stop['owl:sameAs'];
+                    
+                    div.innerHTML = `
+                        <strong>${stop['dc:title']}</strong> 
+                        <small>(ID末尾: ...${stopId.slice(-8)})</small><br>
+                        <span style="color:blue">系統数: ${routeIds.length}</span>
+                    `;
+
+                    // クリック時の動作を安全に設定（addEventListener）
+                    div.addEventListener('click', () => {
+                        getTimetable(stopId, stop['dc:title'], routeIds);
+                    });
+
+                    resultDiv.appendChild(div);
+                });
+
+            } catch (e) {
+                log(`エラー発生: ${e.message}`);
+                resultDiv.innerHTML = `<p style="color:red">エラー: ${e.message}</p>`;
             }
         }
 
-        // 2. 時刻表データの取得と抽出
-        async function loadTimetable(poleId, stopName, routeIdsStr) {
-            // routeIdsStr はカンマ区切りの文字列なので配列に戻す
-            const routeIds = routeIdsStr ? routeIdsStr.split(',') : [];
-
-            if (routeIds.length === 0) {
-                resultArea.innerHTML = `<div class="error">このバス停を通る系統データが見つかりませんでした。</div>`;
+        // 2. 時刻表を取得
+        async function getTimetable(myStopId, stopName, routeIds) {
+            const resultDiv = document.getElementById('resultArea');
+            
+            if (!routeIds || routeIds.length === 0) {
+                log("このバス停には系統情報(odpt:busroutePattern)がありません。");
+                alert("このバス停の系統データがAPIに登録されていません。");
                 return;
             }
 
-            resultArea.innerHTML = `<div class="loading">
-                時刻データを取得・解析中...<br>
-                対象系統数: ${routeIds.length}件<br>
-                (データ量が多いので数秒かかります)
-            </div>`;
+            resultDiv.innerHTML = `<div class="timetable-box"><h3>${stopName} の時刻表を読み込み中...</h3><p>対象系統数: ${routeIds.length}</p></div>`;
+            log(`時刻表取得開始。対象系統数: ${routeIds.length}`);
+
+            // 曜日判定
+            const day = new Date().getDay();
+            let calendar = "Weekday"; // 平日
+            if (day === 0) calendar = "Holiday"; // 日曜
+            if (day === 6) calendar = "Saturday"; // 土曜
+            
+            log(`今日のカレンダー設定: ${calendar}`);
+
+            let allTimes = [];
 
             try {
-                // 全系統のデータを格納する配列
-                let allTimetables = [];
+                // データ量が多いので、最初の3系統だけ試す（制限）
+                const limit = Math.min(routeIds.length, 3); 
+                
+                for (let i = 0; i < limit; i++) {
+                    const routeId = routeIds[i];
+                    log(`系統[${i+1}/${limit}]を取得中...`);
 
-                // 系統ごとにループして「odpt:BusTimetable」を取得
-                // ※本来はPromise.allを使うべきですが、API制限回避のため今回は1つずつ処理します（簡易実装）
-                // ※とりあえず最初の3系統だけ取得してみます（全部やると重すぎるため）
-                const targetRoutes = routeIds.slice(0, 5); 
-
-                for (const routeId of targetRoutes) {
-                    // 今日の曜日判定（簡易版）
-                    const day = new Date().getDay(); // 0:日, 6:土
-                    let calendar = "Weekday";
-                    if (day === 0) calendar = "Holiday";
-                    else if (day === 6) calendar = "Saturday";
-
-                    // 運行ごとの時刻表を取得
-                    const url = `${API_BASE}/odpt:BusTimetable?odpt:operator=${OPERATOR_ID}&odpt:busroutePattern=${routeId}&odpt:calendar=odpt.Calendar:${calendar}&acl:consumerKey=${API_KEY}`;
+                    // URL構築（記号を含むIDを正しくエンコード）
+                    const url = `${API_BASE}/odpt:BusTimetable?odpt:operator=${OPERATOR}&odpt:busroutePattern=${encodeURIComponent(routeId)}&odpt:calendar=odpt.Calendar:${calendar}&acl:consumerKey=${API_KEY}`;
                     
                     const res = await fetch(url);
-                    const buses = await res.json();
+                    const timetableData = await res.json();
+                    
+                    log(`- データ受信: ${timetableData.length}便`);
 
-                    // 各バスの運行データから、このバス停(poleId)の時間を探す
-                    buses.forEach(bus => {
-                        const timeObjs = bus['odpt:busTimetableObject'];
+                    // 各便のデータから、自分のバス停(myStopId)を探す
+                    timetableData.forEach(bus => {
+                        const stops = bus['odpt:busTimetableObject'];
+                        if (!stops) return;
+
+                        // バス停IDで検索（完全一致だと失敗する場合があるので、includesで緩く判定）
+                        const myData = stops.find(s => s['odpt:busstopPole'] === myStopId);
                         
-                        // このバス停が含まれているか検索
-                        const targetStop = timeObjs.find(t => t['odpt:busstopPole'] === poleId);
-                        
-                        if (targetStop && targetStop['odpt:departureTime']) {
-                            allTimetables.push({
-                                time: targetStop['odpt:departureTime'],
-                                dest: bus['odpt:destinationSign'] || targetStop['odpt:destinationSign'] || '行き先不明',
-                                route: bus['dc:title'] || '系統不明' // バスの系統名
+                        if (myData && myData['odpt:departureTime']) {
+                            allTimes.push({
+                                time: myData['odpt:departureTime'],
+                                dest: bus['odpt:destinationSign'] || myData['odpt:destinationSign'] || "行き先不明",
+                                route: bus['dc:title'] || "系統不明"
                             });
                         }
                     });
                 }
 
-                // 時間順に並び替え
-                allTimetables.sort((a, b) => a.time.localeCompare(b.time));
-
                 // 結果表示
-                if (allTimetables.length === 0) {
-                    resultArea.innerHTML = `<div class="error">時刻データが見つかりませんでした。<br>（データ未整備または運休の可能性があります）</div>`;
+                if (allTimes.length === 0) {
+                    log("データは取得できましたが、このバス停の時刻が見つかりませんでした。");
+                    resultDiv.innerHTML = `
+                        <div class="timetable-box">
+                            <h3>時刻データなし</h3>
+                            <p>APIからデータは返ってきましたが、発車時刻が抽出できませんでした。<br>
+                            (ID不一致や、到着のみで発車しないバス停などの可能性があります)</p>
+                        </div>`;
                     return;
                 }
 
-                let html = `<h3>${stopName} 発車予定</h3>`;
-                html += `<p>表示中のカレンダー: ${new Date().getDay() === 0 ? '休日' : (new Date().getDay() === 6 ? '土曜' : '平日')}</p>`;
+                // 時間順に並べ替え
+                allTimes.sort((a, b) => a.time.localeCompare(b.time));
+
+                let html = `<div class="timetable-box"><h3>${stopName} 発車時刻 (${calendar})</h3>`;
+                if (routeIds.length > 3) html += `<p style="color:red; font-size:0.8em">※負荷軽減のため一部の系統のみ表示</p>`;
                 
-                allTimetables.forEach(item => {
-                    html += `<div class="time-row">
-                        <strong style="font-size:1.2em;">${item.time}</strong>
-                        <span>${item.route} : ${item.dest}</span>
+                allTimes.forEach(t => {
+                    html += `
+                    <div class="time-row">
+                        <span class="time-val">${t.time}</span>
+                        <span class="dest-val">${t.route} / ${t.dest}</span>
                     </div>`;
                 });
+                html += "</div>";
+                
+                // 一旦クリアしてから追加せず、既存のリストを消して時刻表を出す
+                resultDiv.innerHTML = html;
+                // 「戻る」ボタン追加
+                const backBtn = document.createElement('button');
+                backBtn.innerText = "戻る";
+                backBtn.style.marginTop = "20px";
+                backBtn.onclick = searchBusStop;
+                resultDiv.appendChild(backBtn);
 
-                // 全部取得していない場合の注記
-                if (routeIds.length > 5) {
-                    html += `<p style="color:red; font-size:0.8em;">※データ量が多いため、一部の系統のみ表示しています。</p>`;
-                }
-
-                resultArea.innerHTML = html;
-
-            } catch (error) {
-                console.error(error);
-                resultArea.innerHTML = `<div class="error">データ取得中にエラー: ${error.message}</div>`;
+            } catch (e) {
+                log(`時刻取得エラー: ${e.message}`);
+                resultDiv.innerHTML += `<p style="color:red">取得失敗: ${e.message}</p>`;
             }
         }
 
