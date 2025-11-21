@@ -3,189 +3,247 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>横浜市営バス時刻表（全日取得版）</title>
+    <title>横浜市営バス時刻表（完成版）</title>
     <style>
-        body { font-family: sans-serif; padding: 15px; line-height: 1.5; color: #333; }
-        h1 { font-size: 1.2em; color: #003366; margin-bottom: 10px; }
-        input, button { padding: 12px; font-size: 16px; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
-        button { background-color: #0055aa; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        body { font-family: sans-serif; padding: 15px; background-color: #f4f4f4; color: #333; }
+        h1 { font-size: 1.2em; color: #003366; text-align: center; margin-bottom: 20px; }
         
-        .stop-item { padding: 10px; border: 1px solid #ddd; margin-bottom: 8px; border-radius: 4px; cursor: pointer; background: #fff; }
-        .stop-item:hover { background: #f0f8ff; border-color: #0055aa; }
-        
-        .timetable-box { margin-top: 20px; border-top: 2px solid #0055aa; padding-top: 10px; }
-        .time-row { border-bottom: 1px solid #eee; padding: 8px 0; display: flex; justify-content: space-between; }
-        .time-val { font-size: 1.3em; font-weight: bold; color: #333; }
-        .meta-val { font-size: 0.8em; color: #888; }
+        /* 検索エリア */
+        .search-box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input { padding: 12px; font-size: 16px; width: 100%; box-sizing: border-box; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button.primary { background-color: #0055aa; color: white; border: none; padding: 12px; width: 100%; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button.primary:active { background-color: #004499; }
 
-        #debugLog {
-            background: #222; color: #0f0; font-family: monospace; 
-            padding: 10px; margin-top: 20px; font-size: 11px; 
-            height: 150px; overflow-y: scroll; border-radius: 4px;
-        }
+        /* 曜日切り替えボタン */
+        .tabs { display: flex; margin-bottom: 0; }
+        .tab-btn { flex: 1; padding: 10px; border: none; cursor: pointer; background: #ddd; font-weight: bold; border-radius: 8px 8px 0 0; margin-right: 2px; color: #666; }
+        .tab-btn:last-child { margin-right: 0; }
+        .tab-btn.active { background: #fff; color: #0055aa; border-top: 3px solid #0055aa; }
+        .tab-btn.weekday.active { color: #333; border-color: #333; }
+        .tab-btn.saturday.active { color: #0055aa; border-color: #0055aa; }
+        .tab-btn.holiday.active { color: #c00; border-color: #c00; }
+
+        /* 時刻表エリア */
+        .timetable-container { background: white; padding: 10px; min-height: 200px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .time-row { border-bottom: 1px solid #eee; padding: 10px 5px; display: flex; align-items: center; }
+        .time-col { font-size: 1.4em; font-weight: bold; width: 70px; color: #333; }
+        .info-col { flex: 1; }
+        .route-name { display: inline-block; background: #eef; color: #0055aa; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-bottom: 4px; }
+        .dest-name { font-size: 0.9em; color: #555; }
+        
+        /* ローディング・メッセージ */
+        .msg { text-align: center; padding: 20px; color: #666; }
+        .loading-bar { height: 4px; background: #ddd; margin-top: 10px; border-radius: 2px; overflow: hidden; }
+        .loading-progress { height: 100%; background: #0055aa; width: 0%; transition: width 0.3s; }
+
+        /* バス停リスト */
+        .stop-item { padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; background: white; }
+        .stop-item:hover { background: #f9f9f9; }
     </style>
 </head>
 <body>
 
-    <h1>横浜市営バス 時刻表検索</h1>
-    <p style="font-size:0.9em">※カレンダー指定なしで全データを取得します</p>
-    
-    <input type="text" id="stopName" value="横浜駅前" placeholder="バス停名を入力">
-    <button id="searchBtn">検索実行</button>
+    <h1>横浜市営バス 時刻表</h1>
 
-    <div id="resultArea">ここに検索結果が表示されます</div>
-    
-    <h3>解析ログ</h3>
-    <div id="debugLog">待機中...</div>
+    <!-- 検索画面 -->
+    <div id="searchView" class="search-box">
+        <input type="text" id="stopName" value="古泉" placeholder="バス停名 (例: 横浜駅前)">
+        <button class="primary" onclick="searchBusStop()">検索</button>
+        <div id="stopList" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- 時刻表画面（最初は非表示） -->
+    <div id="timetableView" style="display:none;">
+        <div style="margin-bottom: 10px;">
+            <button onclick="showSearch()" style="background:none; border:none; color:#666; cursor:pointer;">&lt; 戻る</button>
+            <strong id="currentStopName" style="font-size:1.2em; margin-left:10px;">バス停名</strong>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn weekday" id="btnWeekday" onclick="switchTab('Weekday')">平日</button>
+            <button class="tab-btn saturday" id="btnSaturday" onclick="switchTab('Saturday')">土曜</button>
+            <button class="tab-btn holiday" id="btnHoliday" onclick="switchTab('Holiday')">休日</button>
+        </div>
+
+        <div class="timetable-container" id="timetableArea">
+            <div class="msg">データを読み込み中...</div>
+        </div>
+    </div>
 
     <script>
         const API_KEY = "ey01nwehtybra9q2yzsjvskb5scs53wzne32hhgm1g7reh76oj1nudg8rpavr7ui";
         const API_BASE = "https://api.odpt.org/api/v4";
         const OPERATOR = "odpt.Operator:YokohamaMunicipal";
 
-        function log(msg) {
-            const logDiv = document.getElementById('debugLog');
-            const time = new Date().toLocaleTimeString();
-            logDiv.innerHTML = `[${time}] ${msg}<br>` + logDiv.innerHTML;
-            console.log(msg);
-        }
+        // 取得した全データをここに保存しておきます
+        let allLoadedTimetables = []; 
 
         // 1. バス停検索
         async function searchBusStop() {
             const name = document.getElementById('stopName').value;
-            const resultDiv = document.getElementById('resultArea');
-            
-            resultDiv.innerHTML = "検索中...";
-            log(`バス停「${name}」を検索開始...`);
+            const listDiv = document.getElementById('stopList');
+            listDiv.innerHTML = '<div class="msg">検索中...</div>';
 
             try {
                 const url = `${API_BASE}/odpt:BusstopPole?odpt:operator=${OPERATOR}&dc:title=${encodeURIComponent(name)}&acl:consumerKey=${API_KEY}`;
                 const res = await fetch(url);
                 const data = await res.json();
-                
-                log(`検索ヒット数: ${data.length}件`);
 
                 if (data.length === 0) {
-                    resultDiv.innerHTML = "<p>見つかりませんでした。</p>";
+                    listDiv.innerHTML = '<div class="msg">見つかりませんでした。</div>';
                     return;
                 }
 
-                resultDiv.innerHTML = ""; 
-
+                listDiv.innerHTML = "";
                 data.forEach(stop => {
+                    const routeIds = stop['odpt:busroutePattern'] || [];
                     const div = document.createElement('div');
                     div.className = 'stop-item';
-                    const routeIds = stop['odpt:busroutePattern'] || [];
-                    const stopId = stop['owl:sameAs'];
-                    
-                    div.innerHTML = `<strong>${stop['dc:title']}</strong> <small>(系統数:${routeIds.length})</small>`;
-                    div.addEventListener('click', () => {
-                        getTimetable(stopId, stop['dc:title'], routeIds);
-                    });
-                    resultDiv.appendChild(div);
+                    div.innerHTML = `<strong>${stop['dc:title']}</strong> <span style="color:#888; font-size:0.8em">(${routeIds.length}系統)</span>`;
+                    div.onclick = () => startLoadingTimetable(stop['owl:sameAs'], stop['dc:title'], routeIds);
+                    listDiv.appendChild(div);
                 });
-
             } catch (e) {
-                log(`エラー: ${e.message}`);
+                alert("エラー: " + e.message);
             }
         }
 
-        // 2. 時刻表を取得（カレンダーフィルタなし）
-        async function getTimetable(myStopId, stopName, routeIds) {
-            const resultDiv = document.getElementById('resultArea');
+        // 2. データ取得開始（全系統取得）
+        async function startLoadingTimetable(stopId, stopName, routeIds) {
+            // 画面切り替え
+            document.getElementById('searchView').style.display = 'none';
+            document.getElementById('timetableView').style.display = 'block';
+            document.getElementById('currentStopName').innerText = stopName;
+            document.getElementById('timetableArea').innerHTML = `
+                <div class="msg">
+                    データを取得中...<br>
+                    <span id="progressText">0 / ${routeIds.length} 系統</span>
+                    <div class="loading-bar"><div class="loading-progress" id="progressBar"></div></div>
+                </div>`;
+
+            allLoadedTimetables = []; // リセット
+
+            // 今日の曜日を初期選択
+            const day = new Date().getDay();
+            let initialTab = (day === 0) ? 'Holiday' : (day === 6 ? 'Saturday' : 'Weekday');
+            setActiveTab(initialTab);
+
+            // 並列でデータ取得（高速化）
+            // サーバー負荷を考慮して、5件ずつの塊でリクエストを送ります
+            const chunkSize = 5;
+            for (let i = 0; i < routeIds.length; i += chunkSize) {
+                const chunk = routeIds.slice(i, i + chunkSize);
+                
+                // 塊ごとに通信を実行
+                const promises = chunk.map(async (routeId) => {
+                    try {
+                        // 全カレンダー取得
+                        const url = `${API_BASE}/odpt:BusTimetable?odpt:operator=${OPERATOR}&odpt:busroutePattern=${encodeURIComponent(routeId)}&acl:consumerKey=${API_KEY}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        return data;
+                    } catch (e) {
+                        console.error(e);
+                        return [];
+                    }
+                });
+
+                // 完了を待つ
+                const results = await Promise.all(promises);
+
+                // データを解析して保存
+                results.flat().forEach(bus => {
+                    const stops = bus['odpt:busTimetableObject'];
+                    if (!stops) return;
+                    
+                    // このバス停の時間を探す
+                    const myStop = stops.find(s => s['odpt:busstopPole'] === stopId);
+                    if (myStop && myStop['odpt:departureTime']) {
+                        
+                        // 行き先情報の整理
+                        let dest = myStop['odpt:destinationSign'] || bus['odpt:destinationSign'];
+                        if (!dest) {
+                            // 行き先がない場合、バスのタイトルから抽出を試みる（例: "109系統:横浜駅前行" -> "横浜駅前行"）
+                            const title = bus['dc:title'] || "";
+                            if(title.includes(":")) dest = title.split(":")[1];
+                            else dest = "行先不明";
+                        }
+
+                        // 系統名の整理（例: "109系統:..." -> "109系統"）
+                        let routeName = bus['dc:title'] || "系統不明";
+                        if(routeName.includes(":")) routeName = routeName.split(":")[0];
+
+                        allLoadedTimetables.push({
+                            time: myStop['odpt:departureTime'],
+                            dest: dest,
+                            route: routeName,
+                            calendarId: bus['odpt:calendar'] // 曜日判定用ID
+                        });
+                    }
+                });
+
+                // 進捗バー更新
+                const currentCount = Math.min(i + chunkSize, routeIds.length);
+                const percent = (currentCount / routeIds.length) * 100;
+                document.getElementById('progressText').innerText = `${currentCount} / ${routeIds.length} 系統`;
+                document.getElementById('progressBar').style.width = `${percent}%`;
+            }
+
+            // 完了したら表示
+            switchTab(initialTab);
+        }
+
+        // 3. タブ切り替えと表示更新
+        function switchTab(type) {
+            setActiveTab(type);
+            renderList(type);
+        }
+
+        function setActiveTab(type) {
+            // ボタンの色を変える
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            if(type === 'Weekday') document.getElementById('btnWeekday').classList.add('active');
+            if(type === 'Saturday') document.getElementById('btnSaturday').classList.add('active');
+            if(type === 'Holiday') document.getElementById('btnHoliday').classList.add('active');
+        }
+
+        function renderList(type) {
+            const area = document.getElementById('timetableArea');
             
-            if (!routeIds || routeIds.length === 0) {
-                alert("系統データがありません");
+            // 選択した曜日に一致するデータだけ抽出
+            // IDに "Weekday", "Saturday", "Holiday" の文字列が含まれているかで判定
+            const filtered = allLoadedTimetables.filter(t => t.calendarId.includes(type));
+
+            if (filtered.length === 0) {
+                area.innerHTML = `<div class="msg">データがありません<br><small>（運行がないか、データ取得に失敗しました）</small></div>`;
                 return;
             }
 
-            resultDiv.innerHTML = `<div class="timetable-box"><h3>${stopName} のデータを解析中...</h3></div>`;
-            log(`取得開始。対象系統数: ${routeIds.length} (カレンダー指定なし)`);
+            // 時間順にソート
+            filtered.sort((a, b) => a.time.localeCompare(b.time));
 
-            let allTimes = [];
+            // HTML生成
+            let html = "";
+            filtered.forEach(item => {
+                // 時間の「:」を小さくするなど装飾可能
+                html += `
+                <div class="time-row">
+                    <div class="time-col">${item.time}</div>
+                    <div class="info-col">
+                        <span class="route-name">${item.route}</span>
+                        <div class="dest-name">${item.dest} 行</div>
+                    </div>
+                </div>`;
+            });
 
-            try {
-                // 最初の3系統だけ取得
-                const limit = Math.min(routeIds.length, 3); 
-                
-                for (let i = 0; i < limit; i++) {
-                    const routeId = routeIds[i];
-                    log(`系統[${i+1}]を取得中...`);
-
-                    // ★変更点：&odpt:calendar=... を削除しました
-                    const url = `${API_BASE}/odpt:BusTimetable?odpt:operator=${OPERATOR}&odpt:busroutePattern=${encodeURIComponent(routeId)}&acl:consumerKey=${API_KEY}`;
-                    
-                    const res = await fetch(url);
-                    const timetableData = await res.json();
-                    
-                    log(`- データ受信: ${timetableData.length}便`);
-
-                    // データの中身をチェック（最初の1件のカレンダーIDをログに出す）
-                    if(timetableData.length > 0){
-                        const sampleCal = timetableData[0]['odpt:calendar'];
-                        log(`  (参考: このデータのカレンダーID = ${sampleCal})`);
-                    }
-
-                    timetableData.forEach(bus => {
-                        const stops = bus['odpt:busTimetableObject'];
-                        if (!stops) return;
-
-                        const myData = stops.find(s => s['odpt:busstopPole'] === myStopId);
-                        
-                        if (myData && myData['odpt:departureTime']) {
-                            allTimes.push({
-                                time: myData['odpt:departureTime'],
-                                dest: bus['odpt:destinationSign'] || "行先不明",
-                                route: bus['dc:title'] || "系統不明",
-                                calendar: bus['odpt:calendar'] // カレンダー情報も保存
-                            });
-                        }
-                    });
-                }
-
-                if (allTimes.length === 0) {
-                    log("時刻データが見つかりませんでした。");
-                    resultDiv.innerHTML = `<p>時刻データなし（受信件数0またはバス停ID不一致）</p>`;
-                    return;
-                }
-
-                // 時間順に並べ替え
-                allTimes.sort((a, b) => a.time.localeCompare(b.time));
-
-                let html = `<div class="timetable-box"><h3>${stopName} 発車時刻一覧</h3>`;
-                html += `<p style="font-size:0.8em; color:#d00;">※全ての曜日（平日・土日）が混ざって表示されます</p>`;
-                
-                allTimes.forEach(t => {
-                    // カレンダーIDを短く表示（例: odpt.Calendar:Weekday -> Weekday）
-                    const calShort = t.calendar.split(':').pop();
-                    
-                    html += `
-                    <div class="time-row">
-                        <div>
-                            <span class="time-val">${t.time}</span>
-                            <span class="meta-val">(${calShort})</span>
-                        </div>
-                        <span class="dest-val">${t.route} / ${t.dest}</span>
-                    </div>`;
-                });
-                html += "</div>";
-                
-                resultDiv.innerHTML = html;
-                
-                // 戻るボタン
-                const backBtn = document.createElement('button');
-                backBtn.innerText = "戻る";
-                backBtn.style.marginTop = "20px";
-                backBtn.onclick = searchBusStop;
-                resultDiv.appendChild(backBtn);
-
-            } catch (e) {
-                log(`エラー: ${e.message}`);
-                resultDiv.innerHTML = `<p>エラー: ${e.message}</p>`;
-            }
+            area.innerHTML = html;
         }
 
-        document.getElementById('searchBtn').addEventListener('click', searchBusStop);
+        // 検索画面に戻る
+        function showSearch() {
+            document.getElementById('searchView').style.display = 'block';
+            document.getElementById('timetableView').style.display = 'none';
+        }
     </script>
 </body>
 </html>
